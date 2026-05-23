@@ -8,6 +8,9 @@ from dotenv import load_dotenv
 
 from ghl_api.auth import APIKeyCredentials, OAuthCredentials
 from ghl_api.exceptions import GHLAPIError, GHLAuthError, GHLRateLimitError
+from ghl_api.resources.calendars import Calendars
+from ghl_api.resources.contacts import Contacts
+from ghl_api.resources.conversations import Conversations
 
 V2_BASE_URL = "https://services.leadconnectorhq.com"
 V1_BASE_URL = "https://rest.gohighlevel.com"
@@ -27,6 +30,22 @@ class GHLClient:
         self.base_url = base_url.rstrip("/")
         self.api_version = api_version
         self._http = httpx.Client(timeout=timeout)
+
+        self.contacts = Contacts(self)
+        self.conversations = Conversations(self)
+        self.calendars = Calendars(self)
+
+    @property
+    def default_location_id(self) -> str | None:
+        if isinstance(self.credentials, OAuthCredentials):
+            return self.credentials.location_id
+        return None
+
+    def require_location_id(self, override: str | None = None) -> str:
+        loc = override or self.default_location_id
+        if not loc:
+            raise GHLAPIError("No location_id provided and none configured on client.")
+        return loc
 
     @classmethod
     def from_env(cls, *, dotenv_path: str | None = None) -> GHLClient:

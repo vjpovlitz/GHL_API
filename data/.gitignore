@@ -1,0 +1,3 @@
+# Never commit extracted customer data.
+exports/
+*.csv
