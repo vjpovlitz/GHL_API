@@ -9,84 +9,40 @@ Implements the rules in DATA_RULES.md verbatim.
 from __future__ import annotations
 
 import csv
-import json
+import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
 from ghl_api import GHLClient
+from ghl_api.sanitize import (
+    clean_bit,
+    clean_date,
+    clean_email,
+    clean_id,
+    clean_int,
+    clean_phone,
+    clean_text,
+    clean_utc_ts,
+)
 
 EXPORT_DIR = Path(__file__).resolve().parent.parent / "data" / "exports"
 SOURCE_SYSTEM = "GoHighLevel"
-EXTRACTED_AT_UTC = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.") + f"{datetime.now(timezone.utc).microsecond // 1000:03d}Z"
+_NOW = datetime.now(timezone.utc)
+EXTRACTED_AT_UTC = _NOW.strftime("%Y-%m-%dT%H:%M:%S.") + f"{_NOW.microsecond // 1000:03d}Z"
 
 CONTACT_LIMIT = 100
 CONVERSATION_LIMIT = 50
 MESSAGES_PER_CONVERSATION = 20
 
-
-# ---------- Rule enforcement helpers ----------
-
-def to_str(v: Any) -> str:
-    """Rule 3: missing -> empty string, never 'None'/'null'/'NaN'."""
-    if v is None:
-        return ""
-    if isinstance(v, bool):  # bools serialized separately; if seen here, coerce
-        return "1" if v else "0"
-    if isinstance(v, (list, tuple)):
-        return "|".join(str(x) for x in v if x is not None and x != "")
-    if isinstance(v, dict):
-        return json.dumps(v, separators=(",", ":"), ensure_ascii=False)
-    s = str(v).strip()
-    return "" if s.lower() in ("none", "null", "nan") else s
-
-
-def to_bit(v: Any) -> str:
-    """Rule 2: BIT -> '1' or '0' (empty if unknown)."""
-    if v is None:
-        return ""
-    return "1" if bool(v) else "0"
-
-
-def to_utc_ts(v: Any) -> str:
-    """Rule 2: timestamps -> ISO 8601 UTC with Z. Empty if missing/unparseable.
-
-    Accepts: ISO 8601 strings, epoch seconds, epoch milliseconds.
-    """
-    if v is None or v == "":
-        return ""
-    # Numeric: GHL Conversations API returns epoch ms here
-    if isinstance(v, (int, float)) or (isinstance(v, str) and v.strip().isdigit()):
-        n = int(v)
-        # >= 10^12 -> ms (year ~2001+); else seconds
-        if n >= 10**12:
-            n //= 1000
-        dt = datetime.fromtimestamp(n, tz=timezone.utc)
-        return dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-    s = str(v).strip()
-    if s.endswith("Z") and "T" in s:
-        return s
-    try:
-        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
-        dt = dt.astimezone(timezone.utc)
-        return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
-    except ValueError:
-        return ""  # Rule 3: bad input -> empty, not garbage
-
-
-def to_date(v: Any) -> str:
-    """Rule 2: DATE -> YYYY-MM-DD. Empty if missing."""
-    if not v:
-        return ""
-    s = str(v).strip()
-    return s[:10] if len(s) >= 10 else ""
-
-
-def mask(v: str) -> str:
-    """Rule 7: mask PII in console output after the 4th char."""
-    if not v or len(v) <= 4:
-        return v or ""
-    return v[:4] + "*" * (len(v) - 4)
+# Per-column max length caps (applied during sanitization). Conservative defaults
+# that match the NVARCHAR sizes in sql/create_tables.sql.
+_MAXLEN_NAMES = 100
+_MAXLEN_FULLNAME = 200
+_MAXLEN_EMAIL = 254
+_MAXLEN_SHORT = 100
+_MAXLEN_MED = 255
 
 
 # ---------- CSV writer (Rule 5) ----------
@@ -140,28 +96,29 @@ CONTACT_COLUMNS = [
 
 def map_contact(c: dict) -> dict:
     full = " ".join(filter(None, [c.get("firstName"), c.get("lastName")])).strip()
+    cid = clean_id(c.get("id"))
     return {
-        "ContactId": to_str(c.get("id")),
-        "LocationId": to_str(c.get("locationId")),
-        "FirstName": to_str(c.get("firstName")),
-        "LastName": to_str(c.get("lastName")),
-        "FullName": to_str(c.get("contactName") or full),
-        "Email": to_str(c.get("email")),
-        "Phone": to_str(c.get("phone")),
-        "ContactType": to_str(c.get("type")),
-        "Source": to_str(c.get("source")),
-        "AssignedToUserId": to_str(c.get("assignedTo")),
-        "Address1": to_str(c.get("address1")),
-        "City": to_str(c.get("city")),
-        "State": to_str(c.get("state")),
-        "PostalCode": to_str(c.get("postalCode")),
-        "Country": to_str(c.get("country")),
-        "DateOfBirth": to_date(c.get("dateOfBirth")),
-        "Tags": to_str(c.get("tags")),
-        "DateAddedUtc": to_utc_ts(c.get("dateAdded")),
-        "DateUpdatedUtc": to_utc_ts(c.get("dateUpdated")),
+        "ContactId": cid,
+        "LocationId": clean_id(c.get("locationId")),
+        "FirstName": clean_text(c.get("firstName"), max_len=_MAXLEN_NAMES),
+        "LastName": clean_text(c.get("lastName"), max_len=_MAXLEN_NAMES),
+        "FullName": clean_text(c.get("contactName") or full, max_len=_MAXLEN_FULLNAME),
+        "Email": clean_email(c.get("email"))[:_MAXLEN_EMAIL],
+        "Phone": clean_phone(c.get("phone"))[:20],
+        "ContactType": clean_text(c.get("type"), max_len=32),
+        "Source": clean_text(c.get("source"), max_len=_MAXLEN_SHORT),
+        "AssignedToUserId": clean_id(c.get("assignedTo")),
+        "Address1": clean_text(c.get("address1"), max_len=_MAXLEN_MED),
+        "City": clean_text(c.get("city"), max_len=_MAXLEN_SHORT),
+        "State": clean_text(c.get("state"), max_len=50),
+        "PostalCode": clean_text(c.get("postalCode"), max_len=20),
+        "Country": clean_text(c.get("country"), max_len=8),
+        "DateOfBirth": clean_date(c.get("dateOfBirth")),
+        "Tags": clean_text(c.get("tags")),
+        "DateAddedUtc": clean_utc_ts(c.get("dateAdded")),
+        "DateUpdatedUtc": clean_utc_ts(c.get("dateUpdated")),
         "SourceSystem": SOURCE_SYSTEM,
-        "SourceSystemId": to_str(c.get("id")),
+        "SourceSystemId": cid,
         "ExtractedAtUtc": EXTRACTED_AT_UTC,
     }
 
@@ -190,25 +147,33 @@ CONVERSATION_COLUMNS = [
 
 
 def map_conversation(c: dict) -> dict:
+    cid = clean_id(c.get("id"))
+    unread_count = c.get("unreadCount")
+    is_unread = None
+    if unread_count is not None:
+        try:
+            is_unread = int(unread_count) > 0
+        except (TypeError, ValueError):
+            is_unread = None
     return {
-        "ConversationId": to_str(c.get("id")),
-        "LocationId": to_str(c.get("locationId")),
-        "ContactId": to_str(c.get("contactId")),
-        "ContactName": to_str(c.get("fullName") or c.get("contactName")),
-        "ContactEmail": to_str(c.get("email")),
-        "ContactPhone": to_str(c.get("phone")),
-        "LastMessageType": to_str(c.get("lastMessageType")),
-        "LastMessageBody": to_str(c.get("lastMessageBody")),
-        "LastMessageDateUtc": to_utc_ts(c.get("lastMessageDate")),
-        "LastMessageDirection": to_str(c.get("lastMessageDirection")),
-        "IsUnread": to_bit(c.get("unreadCount", 0) > 0 if c.get("unreadCount") is not None else None),
-        "IsStarred": to_bit(c.get("starred")),
-        "UnreadCount": to_str(c.get("unreadCount")),
-        "ConversationType": to_str(c.get("type")),
-        "DateAddedUtc": to_utc_ts(c.get("dateAdded")),
-        "DateUpdatedUtc": to_utc_ts(c.get("dateUpdated")),
+        "ConversationId": cid,
+        "LocationId": clean_id(c.get("locationId")),
+        "ContactId": clean_id(c.get("contactId")),
+        "ContactName": clean_text(c.get("fullName") or c.get("contactName"), max_len=_MAXLEN_FULLNAME),
+        "ContactEmail": clean_email(c.get("email"))[:_MAXLEN_EMAIL],
+        "ContactPhone": clean_phone(c.get("phone"))[:20],
+        "LastMessageType": clean_text(c.get("lastMessageType"), max_len=64),
+        "LastMessageBody": clean_text(c.get("lastMessageBody")),
+        "LastMessageDateUtc": clean_utc_ts(c.get("lastMessageDate")),
+        "LastMessageDirection": clean_text(c.get("lastMessageDirection"), max_len=16),
+        "IsUnread": clean_bit(is_unread),
+        "IsStarred": clean_bit(c.get("starred")),
+        "UnreadCount": clean_int(unread_count),
+        "ConversationType": clean_text(c.get("type"), max_len=32),
+        "DateAddedUtc": clean_utc_ts(c.get("dateAdded")),
+        "DateUpdatedUtc": clean_utc_ts(c.get("dateUpdated")),
         "SourceSystem": SOURCE_SYSTEM,
-        "SourceSystemId": to_str(c.get("id")),
+        "SourceSystemId": cid,
         "ExtractedAtUtc": EXTRACTED_AT_UTC,
     }
 
@@ -232,19 +197,20 @@ MESSAGE_COLUMNS = [
 
 def map_message(m: dict, conversation_id: str, contact_id: str, location_id: str) -> dict:
     atts = m.get("attachments") or []
+    mid = clean_id(m.get("id"))
     return {
-        "MessageId": to_str(m.get("id")),
-        "ConversationId": to_str(m.get("conversationId") or conversation_id),
-        "ContactId": to_str(m.get("contactId") or contact_id),
-        "LocationId": to_str(m.get("locationId") or location_id),
-        "Direction": to_str(m.get("direction")),
-        "MessageType": to_str(m.get("messageType") or m.get("type")),
-        "Status": to_str(m.get("status")),
-        "Body": to_str(m.get("body")),
-        "HasAttachment": to_bit(bool(atts)),
-        "DateAddedUtc": to_utc_ts(m.get("dateAdded")),
+        "MessageId": mid,
+        "ConversationId": clean_id(m.get("conversationId") or conversation_id),
+        "ContactId": clean_id(m.get("contactId") or contact_id),
+        "LocationId": clean_id(m.get("locationId") or location_id),
+        "Direction": clean_text(m.get("direction"), max_len=16),
+        "MessageType": clean_text(m.get("messageType") or m.get("type"), max_len=64),
+        "Status": clean_text(m.get("status"), max_len=32),
+        "Body": clean_text(m.get("body")),
+        "HasAttachment": clean_bit(bool(atts)),
+        "DateAddedUtc": clean_utc_ts(m.get("dateAdded")),
         "SourceSystem": SOURCE_SYSTEM,
-        "SourceSystemId": to_str(m.get("id")),
+        "SourceSystemId": mid,
         "ExtractedAtUtc": EXTRACTED_AT_UTC,
     }
 
@@ -301,13 +267,27 @@ def main() -> None:
 
     # --- Summary ---
     print("\n" + "=" * 70)
-    print("Done. File summary:")
+    print("File summary:")
     print("=" * 70)
     for fn in ["Contacts.csv", "Conversations.csv", "ConversationMessages.csv"]:
         p = EXPORT_DIR / fn
         if p.exists():
             size_kb = p.stat().st_size / 1024
             print(f"  {fn:30}  {size_kb:8.1f} KB   {p}")
+
+    # --- Self-validation gate: run audit, fail extract if any issues ---
+    print("\n" + "=" * 70)
+    print("Running audit gate...")
+    print("=" * 70)
+    audit_script = Path(__file__).resolve().parent / "audit_csv.py"
+    result = subprocess.run(
+        [sys.executable, str(audit_script)],
+        check=False,
+    )
+    if result.returncode != 0:
+        print("\nAUDIT FAILED — see issues above. Extraction did NOT pass gate.")
+        sys.exit(2)
+    print("\nAudit gate PASSED — files are SQL-Server safe.")
 
 
 if __name__ == "__main__":

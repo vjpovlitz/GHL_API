@@ -25,6 +25,38 @@ Every extraction script must follow these — no exceptions.
 | Multi-value  | `\|`-delimited string | `NVARCHAR(MAX)`      |
 | JSON blob    | stringified, quoted   | `NVARCHAR(MAX)`      |
 
+## 2a. Field sanitization (SQL-Server / BULK INSERT safety)
+
+Every text field passes through `ghl_api.sanitize.clean_text` (or a typed variant)
+before it reaches the CSV. **No exceptions** — even seemingly "safe" fields like
+city names. Cleaning order is fixed:
+
+1. Drop NULL bytes (`\x00`) and other C0 control chars (except space).
+2. Replace `\r`, `\n`, `\r\n`, `\t` with a **single space**. Newlines in CSV fields
+   break `BULK INSERT` even when quoted — never let them through.
+3. Unicode normalize to **NFC**.
+4. Collapse internal runs of whitespace to single space.
+5. Trim leading/trailing whitespace.
+6. Coerce missing-tokens (`"None"`, `"null"`, `"NaN"`, `"undefined"`) to `""`.
+7. Truncate to per-column `max_len` (matches `NVARCHAR(n)` in DDL).
+
+Typed sanitizers (all in `src/ghl_api/sanitize.py`):
+
+| Helper            | Purpose                                              |
+| ----------------- | ---------------------------------------------------- |
+| `clean_text`      | General text. Applies all 7 steps above.             |
+| `clean_id`        | Alphanumeric + `-_` only. For PKs/FKs.               |
+| `clean_phone`     | `+` + digits only. Pass-through if already E.164.    |
+| `clean_email`     | Trim + lowercase + `@`-presence check.               |
+| `clean_bit`       | `"1"` / `"0"` / `""` (unknown).                      |
+| `clean_int`       | Integer-string. Empty if unparseable.                |
+| `clean_utc_ts`    | ISO 8601 UTC w/ ms. Accepts ISO/epoch-sec/epoch-ms.  |
+| `clean_date`      | `YYYY-MM-DD`. Empty if missing.                      |
+
+The audit (`scripts/audit_csv.py`) enforces this rule by counting **physical lines
+vs logical CSV rows** — they must match. `export_to_csv.py` runs the audit as a
+gate before exiting; non-zero exit = bad data, do not load.
+
 ## 3. Nulls
 
 - Missing values → empty string `""`, **never** the literal `"null"`, `"None"`, or `"NaN"`.
