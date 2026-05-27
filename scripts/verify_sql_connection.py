@@ -31,6 +31,13 @@ except ImportError:
     print("ERROR: pyodbc not installed. Run: .venv/bin/pip install pyodbc")
     sys.exit(1)
 
+# Load .env so GHL_SQL_* are picked up without shell exports.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv is in project deps — but tolerate missing
+
 
 def env(name: str, default: str = "") -> str:
     v = os.getenv(name, default)

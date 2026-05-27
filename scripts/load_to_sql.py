@@ -26,6 +26,13 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
+# Load .env so GHL_SQL_* are picked up without shell exports.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(REPO_ROOT / ".env")
+except ImportError:
+    pass
+
 try:
     import pyodbc
 except ImportError:

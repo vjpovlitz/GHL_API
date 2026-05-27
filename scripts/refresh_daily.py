@@ -30,6 +30,13 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(REPO_ROOT / ".env")
+except ImportError:
+    pass
+
 EXPORT_DIR = REPO_ROOT / "data" / "exports"
 PYTHON = sys.executable
 RUN_BATCH = REPO_ROOT / "scripts" / "run_batch.py"

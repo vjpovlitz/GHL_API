@@ -2,10 +2,17 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pandas as pd
 import pyodbc
 import streamlit as st
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
 
 
 def _conn_str() -> str:
