@@ -184,3 +184,234 @@ def map_message(
         "SourceSystemId": mid,
         "ExtractedAtUtc": extracted_at,
     }
+
+
+# ---------- Opportunities ----------
+
+OPPORTUNITY_COLUMNS: list[str] = [
+    "OpportunityId",
+    "LocationId",
+    "PipelineId",
+    "PipelineStageId",
+    "ContactId",
+    "AssignedToUserId",
+    "Name",
+    "Status",
+    "MonetaryValue",
+    "Source",
+    "LostReasonId",
+    "DateAddedUtc",
+    "DateUpdatedUtc",
+    "DateLastStageChangeUtc",
+    "DateClosedUtc",
+    "SourceSystem",
+    "SourceSystemId",
+    "ExtractedAtUtc",
+]
+
+
+def map_opportunity(o: dict, *, extracted_at: str) -> dict:
+    oid = clean_id(o.get("id"))
+    contact = o.get("contact") or {}
+    return {
+        "OpportunityId": oid,
+        "LocationId": clean_id(o.get("locationId")),
+        "PipelineId": clean_id(o.get("pipelineId")),
+        "PipelineStageId": clean_id(o.get("pipelineStageId") or o.get("stageId")),
+        "ContactId": clean_id(o.get("contactId") or contact.get("id")),
+        "AssignedToUserId": clean_id(o.get("assignedTo")),
+        "Name": clean_text(o.get("name"), max_len=255),
+        "Status": clean_text(o.get("status"), max_len=32),
+        "MonetaryValue": clean_int(o.get("monetaryValue")),
+        "Source": clean_text(o.get("source"), max_len=100),
+        "LostReasonId": clean_id(o.get("lostReasonId")),
+        "DateAddedUtc": clean_utc_ts(o.get("createdAt") or o.get("dateAdded")),
+        "DateUpdatedUtc": clean_utc_ts(o.get("updatedAt") or o.get("dateUpdated")),
+        "DateLastStageChangeUtc": clean_utc_ts(o.get("lastStageChangeAt") or o.get("lastStatusChangeAt")),
+        "DateClosedUtc": clean_utc_ts(o.get("dateClosed") or o.get("closedAt")),
+        "SourceSystem": SOURCE_SYSTEM,
+        "SourceSystemId": oid,
+        "ExtractedAtUtc": extracted_at,
+    }
+
+
+# ---------- Pipelines (defs) ----------
+
+PIPELINE_COLUMNS: list[str] = [
+    "PipelineId",
+    "LocationId",
+    "Name",
+    "DateAddedUtc",
+    "DateUpdatedUtc",
+    "SourceSystem",
+    "SourceSystemId",
+    "ExtractedAtUtc",
+]
+
+PIPELINE_STAGE_COLUMNS: list[str] = [
+    "PipelineStageId",
+    "PipelineId",
+    "LocationId",
+    "Name",
+    "Position",
+    "ShowInFunnel",
+    "ShowInPieChart",
+    "SourceSystem",
+    "SourceSystemId",
+    "ExtractedAtUtc",
+]
+
+
+def map_pipeline(p: dict, *, extracted_at: str) -> dict:
+    pid = clean_id(p.get("id"))
+    return {
+        "PipelineId": pid,
+        "LocationId": clean_id(p.get("locationId")),
+        "Name": clean_text(p.get("name"), max_len=200),
+        "DateAddedUtc": clean_utc_ts(p.get("dateAdded") or p.get("createdAt")),
+        "DateUpdatedUtc": clean_utc_ts(p.get("dateUpdated") or p.get("updatedAt")),
+        "SourceSystem": SOURCE_SYSTEM,
+        "SourceSystemId": pid,
+        "ExtractedAtUtc": extracted_at,
+    }
+
+
+def map_pipeline_stage(s: dict, *, pipeline_id: str, location_id: str, extracted_at: str) -> dict:
+    sid = clean_id(s.get("id"))
+    return {
+        "PipelineStageId": sid,
+        "PipelineId": clean_id(pipeline_id),
+        "LocationId": clean_id(location_id),
+        "Name": clean_text(s.get("name"), max_len=200),
+        "Position": clean_int(s.get("position") or s.get("order")),
+        "ShowInFunnel": clean_bit(s.get("showInFunnel")),
+        "ShowInPieChart": clean_bit(s.get("showInPieChart")),
+        "SourceSystem": SOURCE_SYSTEM,
+        "SourceSystemId": sid,
+        "ExtractedAtUtc": extracted_at,
+    }
+
+
+# ---------- Users (agents) ----------
+
+USER_COLUMNS: list[str] = [
+    "UserId",
+    "LocationId",
+    "FirstName",
+    "LastName",
+    "FullName",
+    "Email",
+    "Phone",
+    "Role",
+    "RoleType",
+    "IsActive",
+    "DateAddedUtc",
+    "SourceSystem",
+    "SourceSystemId",
+    "ExtractedAtUtc",
+]
+
+
+def map_user(u: dict, *, extracted_at: str) -> dict:
+    uid = clean_id(u.get("id"))
+    role_info = u.get("roles") or {}
+    full = " ".join(filter(None, [u.get("firstName"), u.get("lastName")])).strip()
+    return {
+        "UserId": uid,
+        "LocationId": clean_id(u.get("locationId")),
+        "FirstName": clean_text(u.get("firstName"), max_len=100),
+        "LastName": clean_text(u.get("lastName"), max_len=100),
+        "FullName": clean_text(u.get("name") or full, max_len=200),
+        "Email": clean_email(u.get("email"))[:254],
+        "Phone": clean_phone(u.get("phone"))[:20],
+        "Role": clean_text(role_info.get("role") if isinstance(role_info, dict) else u.get("role"), max_len=50),
+        "RoleType": clean_text(role_info.get("type") if isinstance(role_info, dict) else u.get("type"), max_len=50),
+        "IsActive": clean_bit(not u.get("deleted", False)),
+        "DateAddedUtc": clean_utc_ts(u.get("dateAdded") or u.get("createdAt")),
+        "SourceSystem": SOURCE_SYSTEM,
+        "SourceSystemId": uid,
+        "ExtractedAtUtc": extracted_at,
+    }
+
+
+# ---------- Calendar Events / Appointments ----------
+
+APPOINTMENT_COLUMNS: list[str] = [
+    "AppointmentId",
+    "LocationId",
+    "CalendarId",
+    "ContactId",
+    "AssignedToUserId",
+    "Title",
+    "AppointmentStatus",
+    "Source",
+    "StartTimeUtc",
+    "EndTimeUtc",
+    "DateAddedUtc",
+    "DateUpdatedUtc",
+    "SourceSystem",
+    "SourceSystemId",
+    "ExtractedAtUtc",
+]
+
+
+CUSTOM_FIELD_COLUMNS: list[str] = [
+    "CustomFieldId",
+    "LocationId",
+    "Model",
+    "FieldKey",
+    "Name",
+    "DataType",
+    "Placeholder",
+    "Position",
+    "IsRequired",
+    "DateAddedUtc",
+    "SourceSystem",
+    "SourceSystemId",
+    "ExtractedAtUtc",
+]
+
+
+def map_custom_field(cf: dict, *, location_id: str, extracted_at: str) -> dict:
+    cid = clean_id(cf.get("id"))
+    return {
+        "CustomFieldId": cid,
+        "LocationId": clean_id(cf.get("locationId") or location_id),
+        "Model": clean_text(cf.get("model"), max_len=32),
+        "FieldKey": clean_text(cf.get("fieldKey") or cf.get("key"), max_len=128),
+        "Name": clean_text(cf.get("name"), max_len=255),
+        "DataType": clean_text(cf.get("dataType"), max_len=32),
+        "Placeholder": clean_text(cf.get("placeholder"), max_len=255),
+        "Position": clean_int(cf.get("position")),
+        "IsRequired": clean_bit(cf.get("isRequired")),
+        "DateAddedUtc": clean_utc_ts(cf.get("dateAdded") or cf.get("createdAt")),
+        "SourceSystem": SOURCE_SYSTEM,
+        "SourceSystemId": cid,
+        "ExtractedAtUtc": extracted_at,
+    }
+
+
+def map_appointment(a: dict, *, extracted_at: str) -> dict:
+    aid = clean_id(a.get("id"))
+    users = a.get("users") or []
+    assigned = ""
+    if isinstance(users, list) and users:
+        first = users[0]
+        assigned = first if isinstance(first, str) else (first or {}).get("id", "")
+    return {
+        "AppointmentId": aid,
+        "LocationId": clean_id(a.get("locationId")),
+        "CalendarId": clean_id(a.get("calendarId")),
+        "ContactId": clean_id(a.get("contactId")),
+        "AssignedToUserId": clean_id(assigned or a.get("assignedUserId")),
+        "Title": clean_text(a.get("title"), max_len=255),
+        "AppointmentStatus": clean_text(a.get("appointmentStatus") or a.get("status"), max_len=32),
+        "Source": clean_text(a.get("source"), max_len=100),
+        "StartTimeUtc": clean_utc_ts(a.get("startTime")),
+        "EndTimeUtc": clean_utc_ts(a.get("endTime")),
+        "DateAddedUtc": clean_utc_ts(a.get("dateAdded") or a.get("createdAt")),
+        "DateUpdatedUtc": clean_utc_ts(a.get("dateUpdated") or a.get("updatedAt")),
+        "SourceSystem": SOURCE_SYSTEM,
+        "SourceSystemId": aid,
+        "ExtractedAtUtc": extracted_at,
+    }

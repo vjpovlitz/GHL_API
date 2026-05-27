@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from typing import Any
 
 import httpx
@@ -11,10 +12,18 @@ from ghl_api.exceptions import GHLAPIError, GHLAuthError, GHLRateLimitError
 from ghl_api.resources.calendars import Calendars
 from ghl_api.resources.contacts import Contacts
 from ghl_api.resources.conversations import Conversations
+from ghl_api.resources.custom_fields import CustomFields
+from ghl_api.resources.opportunities import Opportunities
+from ghl_api.resources.pipelines import Pipelines
+from ghl_api.resources.users import Users
+from ghl_api.throttle import Throttle
 
 V2_BASE_URL = "https://services.leadconnectorhq.com"
 V1_BASE_URL = "https://rest.gohighlevel.com"
 DEFAULT_API_VERSION = "2021-07-28"
+
+_MAX_429_RETRIES = 3
+_DEFAULT_RETRY_AFTER_S = 5.0
 
 
 class GHLClient:
@@ -25,15 +34,21 @@ class GHLClient:
         base_url: str = V2_BASE_URL,
         api_version: str = DEFAULT_API_VERSION,
         timeout: float = 30.0,
+        throttle: Throttle | None = None,
     ):
         self.credentials = credentials
         self.base_url = base_url.rstrip("/")
         self.api_version = api_version
         self._http = httpx.Client(timeout=timeout)
+        self.throttle = throttle or Throttle()
 
         self.contacts = Contacts(self)
         self.conversations = Conversations(self)
         self.calendars = Calendars(self)
+        self.opportunities = Opportunities(self)
+        self.pipelines = Pipelines(self)
+        self.users = Users(self)
+        self.custom_fields = CustomFields(self)
 
     @property
     def default_location_id(self) -> str | None:
@@ -82,16 +97,31 @@ class GHLClient:
             "Version": self.api_version,
             **self.credentials.auth_header(),
         }
-        resp = self._http.request(method, url, params=params, json=json, headers=headers)
-        return self._handle_response(resp)
+
+        attempt = 0
+        while True:
+            self.throttle.before_request()
+            resp = self._http.request(method, url, params=params, json=json, headers=headers)
+            # Always observe — even on errors — so backoff state stays current.
+            self.throttle.observe(resp.headers)
+
+            if resp.status_code == 429 and attempt < _MAX_429_RETRIES:
+                retry_after = _retry_after_seconds(resp) or _DEFAULT_RETRY_AFTER_S
+                attempt += 1
+                time.sleep(retry_after)
+                continue
+
+            return self._handle_response(resp)
 
     def _handle_response(self, resp: httpx.Response) -> Any:
         if resp.status_code == 401:
             raise GHLAuthError("Unauthorized", status_code=401, payload=_safe_json(resp))
         if resp.status_code == 429:
-            retry_after = float(resp.headers.get("Retry-After", "0") or 0) or None
             raise GHLRateLimitError(
-                "Rate limited", retry_after=retry_after, status_code=429, payload=_safe_json(resp)
+                "Rate limited (retries exhausted)",
+                retry_after=_retry_after_seconds(resp),
+                status_code=429,
+                payload=_safe_json(resp),
             )
         if resp.status_code >= 400:
             raise GHLAPIError(
@@ -111,6 +141,16 @@ class GHLClient:
 
     def __exit__(self, *exc) -> None:
         self.close()
+
+
+def _retry_after_seconds(resp: httpx.Response) -> float | None:
+    raw = resp.headers.get("Retry-After") or resp.headers.get("retry-after")
+    if not raw:
+        return None
+    try:
+        return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        return None
 
 
 def _safe_json(resp: httpx.Response) -> dict:
