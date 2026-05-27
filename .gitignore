@@ -5,6 +5,10 @@
 venv/
 env/
 
+# Local-only setup briefs (may contain credentials / tailnet IPs)
+WINDOWS_VM_SETUP.md
+*_SETUP.local.md
+
 # Python
 __pycache__/
 *.py[cod]
