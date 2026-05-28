@@ -13,7 +13,7 @@ Env (optional):
     GHL_SQL_SERVER   default: localhost,1433
     GHL_SQL_USER     default: sa
     GHL_SQL_PASSWORD default: GhlDev_PassW0rd!
-    GHL_SQL_DATABASE default: ghl_warehouse
+    GHL_SQL_DATABASE default: dcr_warehouse
 """
 from __future__ import annotations
 
@@ -348,7 +348,7 @@ def main() -> int:
     ap.add_argument("--batch-size", type=int, default=1000)
     args = ap.parse_args()
 
-    db_name = os.getenv("GHL_SQL_DATABASE", "ghl_warehouse")
+    db_name = os.getenv("GHL_SQL_DATABASE", "dcr_warehouse")
     print(f"=== Connect ===")
     ensure_database(db_name)
 

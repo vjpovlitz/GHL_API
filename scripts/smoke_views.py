@@ -11,17 +11,29 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 
 import pyodbc
 
+# Load .env so GHL_SQL_* are picked up without shell exports.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
+
 
 def conn() -> pyodbc.Connection:
-    return pyodbc.connect(
-        "DRIVER={ODBC Driver 18 for SQL Server};SERVER=localhost,1433;"
-        "UID=sa;PWD=GhlDev_PassW0rd!;DATABASE=ghl_warehouse;"
-        "TrustServerCertificate=yes;Encrypt=no;",
-        autocommit=True,
+    server = os.getenv("GHL_SQL_SERVER", "localhost,1433")
+    user = os.getenv("GHL_SQL_USER", "sa")
+    pw = os.getenv("GHL_SQL_PASSWORD", "GhlDev_PassW0rd!")
+    db = os.getenv("GHL_SQL_DATABASE", "dcr_warehouse")
+    cs = (
+        f"DRIVER={{ODBC Driver 18 for SQL Server}};"
+        f"SERVER={server};UID={user};PWD={pw};DATABASE={db};"
+        f"TrustServerCertificate=yes;Encrypt=no;"
     )
+    return pyodbc.connect(cs, autocommit=True)
 
 
 VIEWS = [

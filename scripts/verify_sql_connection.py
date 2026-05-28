@@ -48,7 +48,7 @@ def main() -> int:
     server = env("GHL_SQL_SERVER", "localhost,1433")
     user = env("GHL_SQL_USER", "sa")
     pw = env("GHL_SQL_PASSWORD", "GhlDev_PassW0rd!")
-    db = env("GHL_SQL_DATABASE", "ghl_warehouse")
+    db = env("GHL_SQL_DATABASE", "dcr_warehouse")
 
     print("=" * 70)
     print("SQL Server connection check")
