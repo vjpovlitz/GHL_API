@@ -23,9 +23,16 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.10",
 ]
+mcp = [
+    "mcp[cli]>=1.0",
+    "pyodbc>=5.0",
+]
+
+[project.scripts]
+dcr-mcp = "dcr_mcp.server:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/ghl_api"]
+packages = ["src/ghl_api", "src/dcr_mcp"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
