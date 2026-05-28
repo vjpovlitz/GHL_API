@@ -12,7 +12,7 @@ Usage:
 Env (optional):
     GHL_SQL_SERVER   default: localhost,1433
     GHL_SQL_USER     default: sa
-    GHL_SQL_PASSWORD default: GhlDev_PassW0rd!
+    GHL_SQL_PASSWORD (required — must be set in .env, no default)
     GHL_SQL_DATABASE default: dcr_warehouse
 """
 from __future__ import annotations
@@ -146,7 +146,7 @@ LOAD_PLAN: list[dict] = [
 def connect(database: str | None = None) -> pyodbc.Connection:
     server = os.getenv("GHL_SQL_SERVER", "localhost,1433")
     user = os.getenv("GHL_SQL_USER", "sa")
-    pw = os.getenv("GHL_SQL_PASSWORD", "GhlDev_PassW0rd!")
+    pw = os.environ["GHL_SQL_PASSWORD"]
     db = database or os.getenv("GHL_SQL_DATABASE", "master")
     cs = (
         f"DRIVER={{ODBC Driver 18 for SQL Server}};"

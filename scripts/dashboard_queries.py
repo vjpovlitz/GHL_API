@@ -30,7 +30,7 @@ except ImportError:
 def conn() -> pyodbc.Connection:
     server = os.getenv("GHL_SQL_SERVER", "localhost,1433")
     user = os.getenv("GHL_SQL_USER", "sa")
-    pw = os.getenv("GHL_SQL_PASSWORD", "GhlDev_PassW0rd!")
+    pw = os.environ["GHL_SQL_PASSWORD"]
     db = os.getenv("GHL_SQL_DATABASE", "dcr_warehouse")
     cs = (
         f"DRIVER={{ODBC Driver 18 for SQL Server}};"

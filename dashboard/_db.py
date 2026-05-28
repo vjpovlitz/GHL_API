@@ -18,8 +18,8 @@ except ImportError:
 def _conn_str() -> str:
     server = os.getenv("GHL_SQL_SERVER", "localhost,1433")
     user = os.getenv("GHL_SQL_USER", "sa")
-    pw = os.getenv("GHL_SQL_PASSWORD", "GhlDev_PassW0rd!")
-    db = os.getenv("GHL_SQL_DATABASE", "ghl_warehouse")
+    pw = os.environ["GHL_SQL_PASSWORD"]
+    db = os.getenv("GHL_SQL_DATABASE", "dcr_warehouse")
     return (
         f"DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={server};"
         f"UID={user};PWD={pw};DATABASE={db};"
