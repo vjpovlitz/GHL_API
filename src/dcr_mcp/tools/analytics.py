@@ -19,6 +19,8 @@ def agent_leaderboard(order_by: AgentSort = "OppsWon", limit: int = 20) -> str:
     Use for "top agents by X", "who closed the most deals", "rep activity".
     Columns: agent, leads assigned/last-30, outbound msgs, reply rate, opps
     total/won/lost, open & won pipeline value. Sorted by `order_by` descending.
+    NOTE: PipelineValueOpen/Won are always 0 — GHL doesn't track deal value here;
+    never report them as money. Count metrics (opps, won, leads) are real.
     """
     limit = max(1, min(limit, 100))
     order_by = check_choice(order_by, get_args(AgentSort), "order_by")
@@ -47,6 +49,8 @@ def lead_source_roi(
 
     Use for "which lead sources perform best", "where do our leads come from".
     `min_leads` filters out tiny/noisy sources. Sorted by `order_by` descending.
+    NOTE: PipelineValueWon and AvgValuePerLead are always 0 — GHL doesn't track
+    deal value here; never report them as money. Volume/engagement/win-rate are real.
     """
     limit = max(1, min(limit, 200))
     order_by = check_choice(order_by, get_args(SourceSort), "order_by")

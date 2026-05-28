@@ -47,6 +47,8 @@ fig = px.scatter(
 st.plotly_chart(fig, use_container_width=True)
 
 st.subheader("Top performers")
+st.caption("⚠️ WonValue is always 0 — deal value is not tracked in GoHighLevel "
+           "for this account, so ignore it as a money figure.")
 st.dataframe(df.head(20), use_container_width=True, hide_index=True)
 
 st.subheader("Dead lists (0% engagement)")

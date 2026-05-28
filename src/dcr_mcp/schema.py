@@ -22,6 +22,10 @@ UTC (columns end in `Utc`). This connection is READ-ONLY. T-SQL dialect: use
 - `ghl.Opportunities` (~253k) — deals. PipelineId, PipelineStageId, ContactId,
   AssignedToUserId, Status ('open'|'won'|'lost'|'abandoned'), MonetaryValue,
   Source, DateAddedUtc, DateClosedUtc.
+  ⚠️ `MonetaryValue` is **always 0** — DCR does not track deal value in GHL.
+  NEVER report pipeline value / won value as a real dollar amount; any
+  value-based KPI (PipelineValueWon/Open, WonValue, AvgValuePerLead) is 0 by
+  construction. Count-based metrics (opps, won opps, leads) are real.
 - `ghl.Conversations` (~213k) / `ghl.ConversationMessages` (~278k) — messaging.
   Messages have Direction ('inbound'|'outbound'), MessageType (SMS/Email/etc.),
   Body, DateAddedUtc.

@@ -70,4 +70,6 @@ st.plotly_chart(fig2, use_container_width=True)
 
 # ---- Table ----
 st.subheader("Full leaderboard")
+st.caption("⚠️ PipelineValueWon is always 0 — deal value is not tracked in "
+           "GoHighLevel for this account, so ignore it as a money figure.")
 st.dataframe(df, use_container_width=True, hide_index=True)

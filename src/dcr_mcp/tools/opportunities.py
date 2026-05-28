@@ -36,6 +36,8 @@ def opportunities_by_stage(
     Use for "how many deals in each stage", "pipeline breakdown", "where are deals
     stuck". Optional `pipeline` name (see list_pipelines) and `status` filter.
     Ordered by pipeline then stage position.
+    NOTE: TotalValue is always 0 — GHL doesn't track deal value here; report deal
+    COUNTS, never the value as money.
     """
     where = []
     params: list = []
@@ -63,6 +65,8 @@ def recent_opportunities(limit: int = 10, status: OppStatus | None = None) -> st
 
     Use for "latest deals", "new opportunities this week", "recent won deals"
     (with status='won'). Shows deal name, status, value, contact, pipeline + stage.
+    NOTE: MonetaryValue is always 0 — GHL doesn't track deal value here; don't
+    report it as money.
     """
     limit = max(1, min(limit, 200))
     where = ""
