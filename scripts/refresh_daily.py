@@ -24,12 +24,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
+import traceback
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 try:
     from dotenv import load_dotenv
@@ -37,11 +41,18 @@ try:
 except ImportError:
     pass
 
+from ghl_api.alerts import send_alert  # noqa: E402
+from load_to_sql import connect  # noqa: E402
+
 EXPORT_DIR = REPO_ROOT / "data" / "exports"
 PYTHON = sys.executable
 RUN_BATCH = REPO_ROOT / "scripts" / "run_batch.py"
 LOAD_SQL = REPO_ROOT / "scripts" / "load_to_sql.py"
 SMOKE_VIEWS = REPO_ROOT / "scripts" / "smoke_views.py"
+
+
+class RefreshError(Exception):
+    """A refresh step exited non-zero; the message names the step and rc."""
 
 
 def latest_manifest_ts(entity: str) -> str | None:
@@ -127,8 +138,7 @@ def main() -> int:
                    "--since-days", str(plan["since_days"]), "--extend"]
         rc = run(cmd, args.dry_run)
         if rc != 0:
-            print(f"  FAILED extract {plan['canonical']} (rc={rc})")
-            return rc
+            raise RefreshError(f"extract {plan['canonical']} failed (rc={rc})")
 
     # ---- Upsert ----
     for plan in plans:
@@ -148,19 +158,12 @@ def main() -> int:
             rc = run([PYTHON, str(LOAD_SQL), "--skip-ddl", "--skip-views",
                       "--upsert-glob", inc_prefix], args.dry_run)
         if rc != 0:
-            print(f"  FAILED upsert {entity} (rc={rc})")
-            return rc
+            raise RefreshError(f"upsert {entity} failed (rc={rc})")
 
     # ---- Rebuild ContactTags + smoke-test views ----
     print(f"\n--- Rebuild ContactTags + smoke views ---")
     if not args.dry_run:
-        import pyodbc
-        conn = pyodbc.connect(
-            "DRIVER={ODBC Driver 18 for SQL Server};SERVER=localhost,1433;"
-            "UID=sa;PWD=GhlDev_PassW0rd!;DATABASE=ghl_warehouse;"
-            "TrustServerCertificate=yes;Encrypt=no;",
-            autocommit=True,
-        )
+        conn = connect(os.getenv("GHL_SQL_DATABASE", "dcr_warehouse"))
         cur = conn.cursor()
         cur.execute("TRUNCATE TABLE ghl.ContactTags;")
         cur.execute("""
@@ -174,12 +177,18 @@ def main() -> int:
         print(f"  ContactTags rebuilt: {cur.fetchone()[0]:,} rows")
     rc = run([PYTHON, str(SMOKE_VIEWS)], args.dry_run)
     if rc != 0:
-        print(f"  smoke-views FAILED (rc={rc})")
-        return rc
+        raise RefreshError(f"smoke-views failed (rc={rc})")
 
     print(f"\nDONE @ {datetime.now(timezone.utc).isoformat()}")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except RefreshError as e:
+        send_alert("DCR refresh FAILED", f"{e}\nLog: {REPO_ROOT}/logs/refresh-err.log")
+        sys.exit(1)
+    except Exception:
+        send_alert("DCR refresh CRASHED", traceback.format_exc())
+        sys.exit(1)

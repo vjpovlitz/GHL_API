@@ -8,6 +8,8 @@ env/
 # Local-only setup briefs (may contain credentials / tailnet IPs)
 WINDOWS_VM_SETUP.md
 *_SETUP.local.md
+HANDOFF.md
+FUB_API_BOOTSTRAP.md
 
 # Python
 __pycache__/
@@ -31,4 +33,5 @@ htmlcov/
 
 # Logs / scratch
 *.log
+logs/
 scratch/
